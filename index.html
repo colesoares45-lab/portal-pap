@@ -576,21 +576,24 @@ function iniciarListeners(){
   listenersIniciados = true;
 
   onValue(refLanc, snap => {
-    lancamentos = [];
-    if(snap.exists()) snap.forEach(c=>lancamentos.push({_key:c.key,...c.val()}));
+    const novos = [];
+    if(snap.exists()) snap.forEach(c=>novos.push({_key:c.key,...c.val()}));
+    // Ordena por timestamp para garantir ordem correta
+    novos.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    lancamentos = novos;
     renderDashboard(); renderTabela(); renderExportar(); setStatus(true);
-  }, ()=>setStatus(false));
+  }, err=>{ console.error(err); setStatus(false); });
 
   onValue(refForn, snap => {
     fornecedores = [];
     if(snap.exists()) snap.forEach(c=>fornecedores.push({_key:c.key,...c.val()}));
     renderFornecedores();
-  });
+  }, err=>console.error(err));
 
   onValue(refProc, snap => {
     processos = [];
     if(snap.exists()) snap.forEach(c=>processos.push({_key:c.key,val:c.val()}));
-  });
+  }, err=>console.error(err));
 }
 
 // ── NAVEGAÇÃO ────────────────────────────────────────────────────
@@ -655,20 +658,35 @@ window.salvarLancamento = async function(){
     acao:document.getElementById('f-acao').value, natureza:document.getElementById('f-natureza').value,
     objeto:document.getElementById('f-objeto').value.trim(), responsavel:document.getElementById('f-responsavel').value.trim(),
     obs:document.getElementById('f-obs').value.trim(), criadoEm:new Date().toISOString(),
+    ts: Date.now(), // timestamp único garante chave distinta no Firebase
   };
   const obrig=['dataPgto','nf','dataNf','valor','fornecedor','cnpj','processo','modalidade','acao','natureza','objeto','responsavel'];
   for(const k of obrig){ if(!campos[k]||campos[k]!==campos[k]){mostrarToast('Preencha todos os campos obrigatórios (*)',true);return;} }
   if(campos.valor<=0){mostrarToast('O valor deve ser maior que zero.',true);return;}
+
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Salvando…';
   try {
-    await push(refLanc, campos);
-    if(!fornecedores.find(f=>f.cnpj===campos.cnpj)) await push(refForn,{nome:campos.fornecedor,cnpj:campos.cnpj,natureza:campos.natureza});
-    if(campos.processo&&!processos.find(p=>p.val===campos.processo)) await push(refProc,campos.processo);
+    // Salva o lançamento e aguarda confirmação do Firebase
+    const novaRef = await push(refLanc, campos);
+    if(!novaRef || !novaRef.key) throw new Error('Firebase não confirmou a gravação.');
+
+    // Salva fornecedor e processo em paralelo (não bloqueante)
+    const promises = [];
+    if(!fornecedores.find(f=>f.cnpj===campos.cnpj))
+      promises.push(push(refForn,{nome:campos.fornecedor,cnpj:campos.cnpj,natureza:campos.natureza}));
+    if(campos.processo&&!processos.find(p=>p.val===campos.processo))
+      promises.push(push(refProc,campos.processo));
+    await Promise.all(promises);
+
     limparFormulario();
-    mostrarToast('✔ Lançamento salvo na nuvem!');
-    setTimeout(()=>trocarAba('dashboard'),800);
-  } catch(e){mostrarToast('Erro: '+e.message,true);}
-  finally{btn.disabled=false;btn.innerHTML='✔ Registrar Lançamento';}
+    mostrarToast('✔ Lançamento salvo! ('+ (lancamentos.length+1) +'º registro)');
+    // Aguarda o listener do Firebase atualizar antes de redirecionar
+    setTimeout(()=>trocarAba('lancamentos'), 1200);
+  } catch(e){
+    mostrarToast('Erro ao salvar: '+e.message, true);
+  } finally {
+    btn.disabled=false; btn.innerHTML='✔ Registrar Lançamento';
+  }
 };
 
 window.limparFormulario = function(){
