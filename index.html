@@ -578,11 +578,17 @@ function iniciarListeners(){
   onValue(refLanc, snap => {
     const novos = [];
     if(snap.exists()) snap.forEach(c=>novos.push({_key:c.key,...c.val()}));
-    // Ordena por timestamp para garantir ordem correta
     novos.sort((a,b)=>(a.ts||0)-(b.ts||0));
     lancamentos = novos;
-    renderDashboard(); renderTabela(); renderExportar(); setStatus(true);
-  }, err=>{ console.error(err); setStatus(false); });
+    // Re-renderiza TODAS as views para garantir sincronismo
+    renderDashboard();
+    renderTabela();
+    renderExportar();
+    setStatus(true);
+    // Força atualização do contador
+    const el = document.getElementById('count-registros');
+    if(el) el.textContent = novos.length;
+  }, err=>{ console.error('Firebase erro:', err); setStatus(false); });
 
   onValue(refForn, snap => {
     fornecedores = [];
@@ -603,7 +609,10 @@ window.trocarAba = function(id){
   document.getElementById('sec-'+id).classList.add('active');
   const idx = ['dashboard','novo','lancamentos','fornecedores','exportar'].indexOf(id);
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
-  if(id==='exportar') renderExportar();
+  if(id==='dashboard')    renderDashboard();
+  if(id==='lancamentos')  renderTabela();
+  if(id==='fornecedores') renderFornecedores();
+  if(id==='exportar')     renderExportar();
 };
 
 // ── DASHBOARD ────────────────────────────────────────────────────
