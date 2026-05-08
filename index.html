@@ -295,20 +295,32 @@ document.getElementById("mo-ok").onclick=async()=>{try{await remove(ref(db,"pap/
 function drawExp(){const e1=document.getElementById("ex-l"),e2=document.getElementById("ex-f"),e3=document.getElementById("ex-p");if(e1)e1.textContent=LANC.length;if(e2)e2.textContent=FORN.length;if(e3)e3.textContent=new Set(LANC.map(l=>l.processo)).size}
 window.exportCSV=()=>{if(!LANC.length){toast("Nenhum lançamento.",true);return;}const h=["#","Data Pgto","Fornecedor","CNPJ","Objeto","Processo","Modalidade","NF","Data NF","Valor","Natureza","Ação","Responsável","Obs"];const r=LANC.map((l,i)=>[i+1,l.dataPgto,l.fornecedor,l.cnpj,l.objeto,l.processo,l.modalidade,l.nf,l.dataNf,parseFloat(l.valor).toFixed(2).replace(".",","),LN[l.natureza]||l.natureza,LA[l.acao]||l.acao,l.responsavel,l.obs||""].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";"));const csv="\uFEFF"+[h.join(";"),...r].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`PAP_${new Date().toISOString().slice(0,10)}.csv`;a.click();toast("CSV exportado!")};
 window.exportJSON=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({LANC,FORN},null,2)],{type:"application/json"}));a.download=`PAP_backup_${new Date().toISOString().slice(0,10)}.json`;a.click();toast("Backup exportado!")};
+// Autocomplete robusto com índice numérico para evitar problemas de escaping
 window.acInput=(inp,listId,tipo)=>{
   const list=document.getElementById(listId);
   const q=inp.value.toLowerCase();
   if(!q){list.classList.remove("show");return;}
-  const items=(tipo==="forn"?FORN.map(f=>({l:f.nome,s:f.cnpj,k:f._key})):PROC.map(p=>({l:p.val,s:"",k:""}))).filter(i=>i.l.toLowerCase().includes(q));
+  const all=(tipo==="forn"?FORN.map(f=>({l:f.nome,s:f.cnpj,k:f._key})):PROC.map(p=>({l:p.val,s:"",k:""})));
+  const items=all.filter(i=>i.l.toLowerCase().includes(q)).slice(0,8);
   if(!items.length){list.classList.remove("show");return;}
-  list.innerHTML=items.slice(0,8).map(i=>`<div class="ai" onmousedown="pickAC(event,'${inp.id}','${listId}',${JSON.stringify(i.l)},${JSON.stringify(i.s)},${JSON.stringify(i.k)})">\<strong>${i.l}</strong>${i.s?`<small>${i.s}</small>`:""}</div>`).join("");
+  // Armazena itens no elemento para acesso seguro
+  list._items=items;
+  list.innerHTML=items.map((i,idx)=>`<div class="ai" data-idx="${idx}"><strong>${i.l}</strong>${i.s?`<small>${i.s}</small>`:""}</div>`).join("");
+  // Usa mousedown no container para não perder foco
+  list.onmousedown=ev=>{
+    ev.preventDefault();
+    const el=ev.target.closest("[data-idx]");
+    if(!el)return;
+    const item=list._items[parseInt(el.dataset.idx)];
+    if(!item)return;
+    inp.value=item.l;
+    list.classList.remove("show");
+    if(inp.id==="f-fo"){
+      const f=FORN.find(x=>x._key===item.k||x.nome===item.l);
+      if(f){document.getElementById("f-cn").value=f.cnpj;if(f.natureza)document.getElementById("f-na").value=f.natureza;}
+    }
+  };
   list.classList.add("show");
-};
-window.pickAC=(e,inId,listId,label,sub,key)=>{
-  e.preventDefault();
-  document.getElementById(inId).value=label;
-  document.getElementById(listId).classList.remove("show");
-  if(inId==="f-fo"){const f=FORN.find(x=>x._key===key||x.nome===label);if(f){document.getElementById("f-cn").value=f.cnpj;if(f.natureza)document.getElementById("f-na").value=f.natureza;}}
 };
 document.addEventListener("click",e=>{if(!e.target.closest(".aw"))document.querySelectorAll(".al").forEach(l=>l.classList.remove("show"))});
 window.maskCNPJ=el=>{let v=el.value.replace(/\D/g,"").slice(0,14);if(v.length>12)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/,"$1.$2.$3/$4-$5");else if(v.length>8)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d*).*/,"$1.$2.$3/$4");else if(v.length>5)v=v.replace(/^(\d{2})(\d{3})(\d*).*/,"$1.$2.$3");else if(v.length>2)v=v.replace(/^(\d{2})(\d*)/,"$1.$2");el.value=v};
