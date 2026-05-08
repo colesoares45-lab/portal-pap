@@ -587,14 +587,15 @@ function iniciarListeners(){
       }
       novos.sort((a,b) => (a.ts||0) - (b.ts||0));
       lancamentos = novos;
-      console.log('Firebase: ' + novos.length + ' lançamentos carregados');
-      atualizarTodasAsViews();
+      console.log('Firebase lancamentos: ' + novos.length);
+      // Aguarda DOM estar pronto antes de renderizar
+      setTimeout(atualizarTodasAsViews, 100);
       setStatus(true);
     } catch(err) {
       console.error('Erro listener lancamentos:', err);
     }
   }, err => {
-    console.error('Firebase permissão negada:', err);
+    console.error('Firebase erro:', err);
     setStatus(false);
   });
 
@@ -764,14 +765,29 @@ window.salvarFornecedor = async function(){
     ['fn-nome','fn-cnpj','fn-tel','fn-email'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('fn-natureza').selectedIndex=0;
     mostrarToast('✔ Fornecedor cadastrado!');
+    // Força re-render da lista após pequeno delay
+    setTimeout(renderFornecedores, 500);
   }catch(e){mostrarToast('Erro: '+e.message,true);}
 };
 
 function renderFornecedores(){
-  const ul=document.getElementById('lista-fornecedores'); if(!ul) return;
-  ul.innerHTML=fornecedores.length
-    ?fornecedores.map(f=>`<li class="saved-item" onclick="window.usarFornecedor('${f._key}')"><div class="saved-item-info"><strong>${f.nome}</strong><small>${f.cnpj}${f.natureza?' · '+LABEL_NAT[f.natureza]:''}</small></div><div class="saved-item-actions" onclick="event.stopPropagation()"><button class="btn-icon delete" onclick="window.deletarFornecedor('${f._key}')">🗑</button></div></li>`).join('')
-    :'<li style="padding:20px;color:var(--cinza-4);text-align:center">Nenhum fornecedor cadastrado ainda.</li>';
+  // Tenta renderizar — se o elemento não existir ainda, agenda para 200ms depois
+  const ul = document.getElementById('lista-fornecedores');
+  if(!ul){ setTimeout(renderFornecedores, 200); return; }
+  ul.innerHTML = fornecedores.length
+    ? fornecedores.map(f=>`<li class="saved-item" onclick="window.usarFornecedor('${f._key}')">
+        <div class="saved-item-info">
+          <strong>${f.nome}</strong>
+          <small>${f.cnpj}${f.natureza?' · '+LABEL_NAT[f.natureza]:''}</small>
+        </div>
+        <div class="saved-item-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon delete" onclick="window.deletarFornecedor('${f._key}')">🗑</button>
+        </div>
+      </li>`).join('')
+    : '<li style="padding:20px;color:var(--cinza-4);text-align:center">Nenhum fornecedor cadastrado ainda.</li>';
+  // Atualiza também o autocomplete do formulário
+  const acList = document.getElementById('ac-fornecedor');
+  if(acList) acList.classList.remove('show');
 }
 
 window.usarFornecedor=function(key){const f=fornecedores.find(x=>x._key===key);if(!f)return;document.getElementById('f-fornecedor').value=f.nome;document.getElementById('f-cnpj').value=f.cnpj;if(f.natureza)document.getElementById('f-natureza').value=f.natureza;trocarAba('novo');mostrarToast('Fornecedor selecionado!');};
