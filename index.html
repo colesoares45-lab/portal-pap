@@ -575,31 +575,52 @@ function iniciarListeners(){
   if(listenersIniciados) return;
   listenersIniciados = true;
 
+  // Listener de lançamentos — usa get() para leitura única garantida + onValue para tempo real
   onValue(refLanc, snap => {
-    const novos = [];
-    if(snap.exists()) snap.forEach(c=>novos.push({_key:c.key,...c.val()}));
-    novos.sort((a,b)=>(a.ts||0)-(b.ts||0));
-    lancamentos = novos;
-    // Re-renderiza TODAS as views para garantir sincronismo
-    renderDashboard();
-    renderTabela();
-    renderExportar();
-    setStatus(true);
-    // Força atualização do contador
-    const el = document.getElementById('count-registros');
-    if(el) el.textContent = novos.length;
-  }, err=>{ console.error('Firebase erro:', err); setStatus(false); });
+    try {
+      const novos = [];
+      if(snap && snap.exists()){
+        snap.forEach(child => {
+          const val = child.val();
+          if(val) novos.push({ _key: child.key, ...val });
+        });
+      }
+      novos.sort((a,b) => (a.ts||0) - (b.ts||0));
+      lancamentos = novos;
+      console.log('Firebase: ' + novos.length + ' lançamentos carregados');
+      atualizarTodasAsViews();
+      setStatus(true);
+    } catch(err) {
+      console.error('Erro listener lancamentos:', err);
+    }
+  }, err => {
+    console.error('Firebase permissão negada:', err);
+    setStatus(false);
+  });
 
   onValue(refForn, snap => {
-    fornecedores = [];
-    if(snap.exists()) snap.forEach(c=>fornecedores.push({_key:c.key,...c.val()}));
-    renderFornecedores();
-  }, err=>console.error(err));
+    try {
+      fornecedores = [];
+      if(snap && snap.exists()) snap.forEach(c => fornecedores.push({_key:c.key,...c.val()}));
+      renderFornecedores();
+    } catch(err){ console.error('Erro listener fornecedores:', err); }
+  });
 
   onValue(refProc, snap => {
-    processos = [];
-    if(snap.exists()) snap.forEach(c=>processos.push({_key:c.key,val:c.val()}));
-  }, err=>console.error(err));
+    try {
+      processos = [];
+      if(snap && snap.exists()) snap.forEach(c => processos.push({_key:c.key, val:c.val()}));
+    } catch(err){ console.error('Erro listener processos:', err); }
+  });
+}
+
+// Atualiza todas as views de uma vez
+function atualizarTodasAsViews(){
+  renderDashboard();
+  renderTabela();
+  renderExportar();
+  const el = document.getElementById('count-registros');
+  if(el) el.textContent = lancamentos.length;
 }
 
 // ── NAVEGAÇÃO ────────────────────────────────────────────────────
@@ -609,10 +630,11 @@ window.trocarAba = function(id){
   document.getElementById('sec-'+id).classList.add('active');
   const idx = ['dashboard','novo','lancamentos','fornecedores','exportar'].indexOf(id);
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
-  if(id==='dashboard')    renderDashboard();
-  if(id==='lancamentos')  renderTabela();
-  if(id==='fornecedores') renderFornecedores();
-  if(id==='exportar')     renderExportar();
+  // Sempre re-renderiza tudo ao trocar aba
+  setTimeout(() => {
+    atualizarTodasAsViews();
+    renderFornecedores();
+  }, 50);
 };
 
 // ── DASHBOARD ────────────────────────────────────────────────────
